@@ -1,0 +1,26 @@
+(misgs) jinjingxu@g27ws0018:/mnt/ceph/tco/TCO-Staff/Homes/jinjing/proj/gs/baselines/Deformable-3D-Gaussians$ python train.py  \
+--eval --is_blender \
+-s /mnt/cluster/datasets/D-NeRF/hook/ \
+-m /mnt/ceph/tco/TCO-Staff/Homes/jinjing/exps/train/gs/debug/EndoNeRF/pulling2
+
+*********************train****************************
+train on EndoNeRF(manual change method_mode: None -> surg-gs):
+(misgs) jinjingxu@g27ws0018:/mnt/ceph/tco/TCO-Staff/Homes/jinjing/proj/gs/baselines/Deformable-3D-Gaussians$ \
+python train(_gui).py  \
+--eval --is_blender \
+-s /mnt/cluster/datasets/EndoNeRF/pulling \
+-m /mnt/ceph/tco/TCO-Staff/Homes/jinjing/exps/train/gs/debug/EndoNeRF/pulling3 \
+--update arguments/endonerf/pulling.py 
+
+train on DNerf(manual default method_mode: None):
+(misgs) jinjingxu@g27ws0018:/mnt/ceph/tco/TCO-Staff/Homes/jinjing/proj/gs/baselines/Deformable-3D-Gaussians$ python train_gui.py  \
+--eval --is_blender \
+-s /mnt/cluster/datasets/D-NeRF/hook/ \
+-m /mnt/ceph/tco/TCO-Staff/Homes/jinjing/exps/train/gs/debug/EndoNeRF/pulling2
+
+
+
+*********************vis****************************
+vis tb resulst:
+(tb_vis) jinjingxu@G27LP0076-Linux:~$ tensorboard --logdir /home/jinjingxu/ceph_mnt/exps/train/gs/debug/EndoNeRF/pullingxxxx
+

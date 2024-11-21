@@ -14,6 +14,8 @@ import sys
 import os
 
 
+
+
 class GroupParams:
     pass
 
@@ -47,8 +49,11 @@ class ParamGroup:
         return group
 
 
+
+
 class ModelParams(ParamGroup):
-    def __init__(self, parser, sentinel=False):
+    def __init__(self, parser, sentinel=False, method_mode = None):
+        assert method_mode in [None, 'surg-gs'],method_mode
         self.sh_degree = 3
         self._source_path = ""
         self._model_path = ""
@@ -60,6 +65,16 @@ class ModelParams(ParamGroup):
         self.load2gpu_on_the_fly = False
         self.is_blender = False
         self.is_6dof = False
+        if method_mode == 'surg-gs':
+            print('Adopt surg-gs model param...')
+            self.dataset_type = None
+            self.test_id = None
+            self.depth_scale = 100
+            self.is_depth = False
+            self.is_mask = False
+            self.depth_initial = False
+            self.accurate_mask = False
+            self.frame_nums = None
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):
@@ -69,15 +84,25 @@ class ModelParams(ParamGroup):
 
 
 class PipelineParams(ParamGroup):
-    def __init__(self, parser):
+    def __init__(self, parser, method_mode = None):
         self.convert_SHs_python = False
         self.compute_cov3D_python = False
         self.debug = False
         super().__init__(parser, "Pipeline Parameters")
 
 
-class OptimizationParams(ParamGroup):
+class GeneralParams(ParamGroup):
     def __init__(self, parser):
+        # self.method_mode = None
+        super().__init__(parser, "Other Parameters")
+
+
+
+
+class OptimizationParams(ParamGroup):
+    def __init__(self, parser, method_mode = None):
+        assert method_mode in ['surg-gs',None]
+
         self.iterations = 40_000
         self.warm_up = 3_000
         self.position_lr_init = 0.00016
@@ -96,6 +121,16 @@ class OptimizationParams(ParamGroup):
         self.densify_from_iter = 500
         self.densify_until_iter = 15_000
         self.densify_grad_threshold = 0.0007
+
+        if method_mode == 'surg-gs':
+            print('Adopt surg-gs optim param...')
+            # update
+            self.densify_grad_threshold = 0.0002
+            # add
+            self.lambda_smooth = 0.02
+            self.lambda_cov = 0.0
+            self.lambda_pos = 0.0
+
         super().__init__(parser, "Optimization Parameters")
 
 

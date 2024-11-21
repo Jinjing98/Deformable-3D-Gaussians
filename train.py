@@ -11,6 +11,8 @@
 
 import os
 import torch
+import mmcv
+
 from random import randint
 from utils.loss_utils import l1_loss, ssim, kl_divergence
 from gaussian_renderer import render, network_gui
@@ -21,7 +23,7 @@ import uuid
 from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
-from arguments import ModelParams, PipelineParams, OptimizationParams
+from arguments import ModelParams, PipelineParams, OptimizationParams, GeneralParams
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -36,7 +38,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations):
     gaussians = GaussianModel(dataset.sh_degree)
     deform = DeformModel(dataset.is_blender, dataset.is_6dof)
     deform.train_setting(opt)
-
     scene = Scene(dataset, gaussians)
     gaussians.training_setup(opt)
 
@@ -248,12 +249,36 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
     return test_psnr
 
 
+
+def update_config_params(args, config, extend_if_not_exist = True):
+
+    params = ["OptimizationParams", "ModelParams", "PipelineParams"]
+    for param in params:
+        if param in config.keys():
+            
+            for key, value in config[param].items():
+                
+                if extend_if_not_exist or hasattr(args, key):
+                    setattr(args, key, value)
+    return args
+
+def perform_sanity(method_mode,args):
+    # sanity:
+    if 'EndoNeRF' in args.source_path:
+        assert args.update_config != None
+        assert method_mode == 'surg-gs','default deform gs model was not able to run due to non-ideal take test splits as model param '
+    
+    else:
+        # for general cv data, use default
+        assert args.update_config == None
+
 if __name__ == "__main__":
     # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")
-    lp = ModelParams(parser)
-    op = OptimizationParams(parser)
-    pp = PipelineParams(parser)
+    method_mode = 'surg-gs'  #None #'surg-gs'    #due to the extract op, can only manual rather terminal
+    lp = ModelParams(parser,method_mode = method_mode)
+    op = OptimizationParams(parser,method_mode = method_mode)
+    pp = PipelineParams(parser, method_mode = method_mode)
     parser.add_argument('--ip', type=str, default="127.0.0.1")
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
@@ -261,8 +286,20 @@ if __name__ == "__main__":
                         default=[5000, 6000, 7_000] + list(range(10000, 40001, 1000)))
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 10_000, 20_000, 30_000, 40000])
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--update_config", type=str)
+
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
+
+
+
+
+    perform_sanity(method_mode,args)
+
+    # jj update configs
+    if args.update_config!= None:
+        new_config = mmcv.Config.fromfile(args.update_config)
+        args = update_config_params(args, new_config, extend_if_not_exist = True) # for endonerf test_id etc
 
     print("Optimizing " + args.model_path)
 
@@ -272,7 +309,15 @@ if __name__ == "__main__":
     # Start GUI server, configure and run training
     # network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations)
+
+
+
+    training(lp.extract(args), 
+            op.extract(args), 
+            pp.extract(args), 
+            args.test_iterations, 
+            args.save_iterations)
+
 
     # All done
     print("\nTraining complete.")

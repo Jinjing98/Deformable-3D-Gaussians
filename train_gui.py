@@ -28,7 +28,7 @@ import math
 from utils.gui_utils import orbit_camera, OrbitCamera
 import numpy as np
 import dearpygui.dearpygui as dpg
-
+import mmcv
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -739,11 +739,17 @@ def prepare_output_and_logger(args):
 
 
 if __name__ == "__main__":
+
+    from train import perform_sanity,update_config_params
+
+
     # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")
-    lp = ModelParams(parser)
-    op = OptimizationParams(parser)
-    pp = PipelineParams(parser)
+    
+    method_mode = None #'surg-gs'  #'surg-gs'    #due to the extract op, can only manual rather terminal
+    lp = ModelParams(parser,method_mode = method_mode)
+    op = OptimizationParams(parser,method_mode = method_mode)
+    pp = PipelineParams(parser, method_mode = method_mode)
     
     parser.add_argument('--gui', action='store_false', help="start a GUI")
     parser.add_argument('--W', type=int, default=800, help="GUI width")
@@ -759,8 +765,17 @@ if __name__ == "__main__":
                         default=[5000, 6000, 7_000] + list(range(10000, 40001, 1000)))
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 10_000, 20_000, 30_000, 40000])
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--update_config", type=str)
+
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
+
+    perform_sanity(method_mode,args)
+    
+    # jj update configs
+    if args.update_config!= None:
+        new_config = mmcv.Config.fromfile(args.update_config)
+        args = update_config_params(args, new_config, extend_if_not_exist = True) # for endonerf test_id etc
 
     print("Optimizing " + args.model_path)
 
@@ -770,7 +785,12 @@ if __name__ == "__main__":
     # Start GUI server, configure and run training
     # network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    gui = GUI(args=args, dataset=lp.extract(args), opt=op.extract(args), pipe=pp.extract(args),testing_iterations=args.test_iterations, saving_iterations=args.save_iterations)
+    gui = GUI(args=args, 
+        dataset=lp.extract(args), 
+        opt=op.extract(args), 
+        pipe=pp.extract(args),
+        testing_iterations=args.test_iterations, 
+        saving_iterations=args.save_iterations)
 
     if args.gui:
         gui.render()

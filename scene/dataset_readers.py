@@ -41,6 +41,9 @@ class CameraInfo(NamedTuple):
     height: int
     fid: float
     depth: Optional[np.array] = None
+    #jj extend
+    mask_depth: Optional[np.array] = None
+    mask: Optional[np.array] = None
 
 
 class SceneInfo(NamedTuple):
@@ -513,6 +516,7 @@ def readNerfiesInfo(path, eval):
 def readCamerasFromNpy(path, npy_file, split, hold_id, num_images):
     cam_infos = []
     video_paths = sorted(glob(os.path.join(path, 'frames/*')))
+    assert 0,f'{video_paths} {path}'
     poses_bounds = np.load(os.path.join(path, npy_file))
 
     poses = poses_bounds[:, :15].reshape(-1, 3, 5)
@@ -597,7 +601,144 @@ def readPlenopticVideoDataset(path, eval, num_images, hold_id=[0]):
     return scene_info
 
 
+
+
+def readCamerasdavinci(path, data_type, is_depth, depth_scale, is_mask, npy_file, split, hold_id, num_images):
+    
+
+    def imread(f):
+        if f.endswith('png'):
+            return imageio.imread(f, 
+            apply_gamma=True,#jj
+            # ignoregamma=True,
+            )
+
+        else:
+            return imageio.imread(f)
+
+    
+    cam_infos = []
+    poses_bounds = np.load(os.path.join(path, npy_file))
+    poses = poses_bounds[:, :15].reshape(-1, 3, 5)
+    H, W, focal = poses[0, :, -1]
+    video_path = sorted(glob(os.path.join(path, 'images/*')))
+    if is_mask:
+        masks_path = sorted(glob(os.path.join(path, 'gt_masks/*')))
+    if is_depth:
+        depths_path = sorted(glob(os.path.join(path, 'depth/*')))
+        bds = poses_bounds[:, -2:]
+        close_depth, inf_depth = np.ndarray.min(bds), np.ndarray.max(bds)
+
+    n_cameras = poses.shape[0]
+    poses = poses[:, :, :4]
+    bottoms = np.array([0, 0, 0, 1]).reshape(
+        1, -1, 4).repeat(poses.shape[0], axis=0)
+    poses = np.concatenate([poses, bottoms], axis=1)
+
+    i_test = np.array(hold_id)
+    video_list = i_test if split != 'train' else list(
+        set(np.arange(n_cameras)) - set(i_test))
+
+    for i in video_list:
+        c2w = poses[i]
+        images_path = video_path[i]
+        image_name = Path(images_path).stem
+        n_frames = num_images
+
+        matrix = np.linalg.inv(np.array(c2w))
+        R = np.transpose(matrix[:3, :3])
+        T = matrix[:3, 3]
+
+        image = Image.open(images_path)
+
+        mask_image = None
+        if is_mask:
+            mask_path = masks_path[i]
+            mask_image = np.array(imread(mask_path) / 255.0)
+            # mask is 0 or 1
+            mask_image = np.where(mask_image > 0.5, 1.0, 0.0)
+            # Convert 0 for tool, 1 for not tool
+            mask_image = 1.0 - mask_image
+            if data_type == 'endonerf':
+                mask_image[-12:, :] = 0
+
+        depth_image = None
+        mask_depth = None
+        if is_depth:
+            depth_path = depths_path[i]
+            depth_image = np.array(imread(depth_path) * 1.0)
+            depth_image = depth_image / depth_scale
+            near = np.percentile(depth_image, 3)
+            far = np.percentile(depth_image, 98)
+            mask_depth = np.bitwise_and(depth_image > near, depth_image < far)
+            if is_mask:
+                mask_depth = mask_depth * mask_image
+            depth_image = depth_image * mask_depth
+
+        frame_time = i / (n_frames - 1)
+        FovX = focal2fov(focal, image.size[0])
+        FovY = focal2fov(focal, image.size[1])
+        cam_infos.append(CameraInfo(uid=i, R=R, T=T, FovX=FovX, FovY=FovY,
+                                    image=image,
+                                    image_path=images_path, image_name=image_name,
+                                    width=image.size[0], height=image.size[1], fid=frame_time, depth=depth_image, mask_depth=mask_depth, mask=mask_image))
+
+
+    return cam_infos
+
+
+def readEndonerfInfo(path, data_type, eval, is_depth, depth_scale, is_mask, depth_initial, num_images, hold_id):  # hold_id选择test的帧数ID,这个是endosurf的测试集
+    print("Reading Training Camera")
+    train_cam_infos = readCamerasdavinci(
+        path, data_type, is_depth, depth_scale, is_mask, 'poses_bounds.npy', split="train", hold_id=hold_id, num_images=num_images)
+
+    print("Reading Test Camera")
+    test_cam_infos = readCamerasdavinci(
+        path, data_type, is_depth, depth_scale, is_mask, 'poses_bounds.npy', split="test", hold_id=hold_id, num_images=num_images)
+
+    if not eval:
+        train_cam_infos.extend(test_cam_infos)
+        test_cam_infos = []
+
+    nerf_normalization = getNerfppNorm(train_cam_infos)
+    nerf_normalization["radius"] = 1
+
+    ply_path = os.path.join(path, 'points3D.ply')
+    if not os.path.exists(ply_path):
+        if depth_initial:
+            color, depth, intrinsics, mask = get_all_initial_data_endo(path, data_type, depth_scale, is_mask, 'poses_bounds.npy')
+
+            xyz, RGB = get_pointcloud(color, depth, intrinsics, mask)
+            storePly(ply_path, xyz, RGB)
+
+        else:
+            num_pts = 100_000
+            print(f"Generating random point cloud ({num_pts})...")
+
+            # We create random points inside the bounds of the synthetic Blender scenes
+            xyz = np.random.random((num_pts, 3)) * 2.6 - 1.3
+            shs = np.random.random((num_pts, 3)) / 255.0
+            pcd = BasicPointCloud(points=xyz, colors=SH2RGB(
+                shs), normals=np.zeros((num_pts, 3)))
+
+            storePly(ply_path, xyz, SH2RGB(shs) * 255)
+
+    try:
+        pcd = fetchPly(ply_path)
+    except:
+        pcd = None
+
+    scene_info = SceneInfo(point_cloud=pcd,
+                           train_cameras=train_cam_infos,
+                           test_cameras=test_cam_infos,
+                           nerf_normalization=nerf_normalization,
+                           ply_path=ply_path)
+    return scene_info
+
+
 sceneLoadTypeCallbacks = {
+    "Endonerf": readEndonerfInfo,
+# sceneLoadTypeCallbacks = {
     "Colmap": readColmapSceneInfo,  # colmap dataset reader from official 3D Gaussian [https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/]
     "Blender": readNerfSyntheticInfo,  # D-NeRF dataset [https://drive.google.com/file/d/1uHVyApwqugXTFuIRRlE4abTW8_rrVeIK/view?usp=sharing]
     "DTU": readNeuSDTUInfo,  # DTU dataset used in Tensor4D [https://github.com/DSaurus/Tensor4D]
