@@ -747,6 +747,8 @@ if __name__ == "__main__":
     parser = ArgumentParser(description="Training script parameters")
     
     method_mode = None #'surg-gs'  #'surg-gs'    #due to the extract op, can only manual rather terminal
+    method_mode = 'surg-gs'  #'surg-gs'    #due to the extract op, can only manual rather terminal
+    
     lp = ModelParams(parser,method_mode = method_mode)
     op = OptimizationParams(parser,method_mode = method_mode)
     pp = PipelineParams(parser, method_mode = method_mode)

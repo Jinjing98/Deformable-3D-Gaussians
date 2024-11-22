@@ -609,8 +609,8 @@ def readCamerasdavinci(path, data_type, is_depth, depth_scale, is_mask, npy_file
     def imread(f):
         if f.endswith('png'):
             return imageio.imread(f, 
-            apply_gamma=True,#jj
-            # ignoregamma=True,
+            # apply_gamma=True,#jj
+            ignoregamma=True,
             )
 
         else:
