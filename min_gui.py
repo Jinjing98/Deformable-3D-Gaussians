@@ -6,6 +6,7 @@ dpg.create_context()
 # Create a viewport (the application window)
 dpg.create_viewport(title="Example Window", width=600, height=400)
 
+
 # Define GUI elements within a window
 with dpg.window(label="Main Window"):
     dpg.add_button(label="Click Me!")
